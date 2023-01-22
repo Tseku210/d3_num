@@ -46,9 +46,13 @@
         });
         return Object.keys(newData).map((d) => ({
           name: d,
-          size: newData[d],
+          size: newData[d] + 1,
           color: getRandomColor(),
         }));
+      };
+
+      const filterDataByDepartment = (data, filter, value) => {
+        return data.filter((item) => item[filter] === value);
       };
 
       const calculateGraph = (data, src) => {
@@ -57,7 +61,7 @@
           links.push({
             source: src.text,
             target: d,
-            id: `${d}-${i}`,
+            id: `${d.name}-${i}`,
           })
         );
         return { nodes: data, links };
@@ -91,6 +95,37 @@
           .on("end", dragended);
       };
 
+      const renderArticles = (data) => {
+        const articleContainer = d3
+          .select("body")
+          .append("div")
+          .classed("articles", true);
+
+        const articles = articleContainer
+          .selectAll("div")
+          .data(data, (d) => d)
+          .join("div");
+        articles.append("p").text((d) => d["Судлаачийн нэр"]);
+        articles.append("p").text((d) => d["Албан тушаал"]);
+        articles
+          .append("p")
+          .text((d) =>
+            d["Өгүүллийн гарчиг"] === "" ? "Гарчиггүй" : d["Өгүүллийн гарчиг"]
+          );
+        articles
+          .append("a")
+          .text((d) => "Унших")
+          .attr("href", (d) => d["DOI URL"]);
+      };
+
+      const resetGraph = () => {
+        const svg = d3.select("svg");
+        //remove all children
+        svg.selectAll("line").remove();
+        svg.selectAll("g").remove();
+        svg.selectAll("text").remove();
+      };
+
       const mouseoverNode = (ref) => {
         let el = d3.select(ref);
         el.attr("fill-opacity", 0.5);
@@ -101,12 +136,27 @@
         el.attr("fill-opacity", 1);
       };
 
-      const renderGraph = (data) => {
+      const clickNode = (ref, data) => {
+        resetGraph();
+        const el = d3.select(ref);
+        const filterName = el.datum().name;
+        const filteredData = filterDataByDepartment(
+          data,
+          "Сургууль",
+          filterName
+        );
+        console.log(filteredData);
+        renderGraph(filteredData, filterName, "Тэнхимийн нэр");
+        renderArticles(filteredData);
+      };
+
+      const renderHomeGraph = (data, center, filterBy) => {
         // get filtered data
-        const centerText = [{ text: "МУИС" }];
-        const schools = filterData(data, "Сургууль");
+        const centerText = [{ text: center }];
+        const schools = filterData(data, filterBy);
         console.log(schools);
         const graph = calculateGraph(schools, centerText);
+        console.log(graph);
 
         const link = svg
           .selectAll(".link")
@@ -127,7 +177,10 @@
           .attr("fill", (d) => d.color)
           .attr("stroke", "black")
           .attr("stroke-width", 0.5)
-          .attr("transform", (d) => `scale(${Math.log(d.size)})`);
+          .attr(
+            "transform",
+            (d) => `scale(${Math.log(d.size) !== 0 ? Math.log(d.size) : 1})`
+          );
 
         node
           .on("mouseover", function () {
@@ -135,6 +188,104 @@
           })
           .on("mouseout", function () {
             mouseoutNode(this);
+          })
+          .on("click", function () {
+            clickNode(this, data);
+          });
+        node
+          .append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", ".35em")
+          .style("font-size", "1em")
+          .style("font-style", "italic")
+          .text((d) => d.name);
+
+        // center text MUIS
+        const label = svg
+          .append("text")
+          .data(centerText)
+          .attr("font-size", "3em")
+          .attr("text-anchor", "middle")
+          .attr("dy", ".35em")
+          .text((d) => d.text);
+
+        const _nodes = [...centerText, ...graph.nodes];
+        const simulation = d3
+          .forceSimulation(_nodes)
+          .force(
+            "link",
+            d3
+              .forceLink()
+              .id((d) => d.name)
+              .links(graph.links)
+              .distance(200)
+          )
+          .force("charge", d3.forceManyBody().strength(-1000))
+          .force(
+            "collide",
+            d3.forceCollide((d) => 20 * Math.log(d.size) || 100)
+          )
+          .force("center", d3.forceCenter(svgWidth / 2, svgHeight / 2))
+          // .alphaTarget(0.1)
+          .on("tick", () => {
+            console.log("tick");
+            link
+              .attr("x1", (d) => d.source.x)
+              .attr("y1", (d) => d.source.y)
+              .attr("x2", (d) => d.target.x)
+              .attr("y2", (d) => d.target.y);
+
+            node.attr("transform", (d) => `translate(${d.x}, ${d.y})`);
+            label.attr("transform", (d) => `translate(${d.x}, ${d.y})`);
+            //node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+          });
+      };
+
+      const renderDomainGraph = (data, center, filterBy) => {
+        renderGraph(data, center, filterBy);
+      };
+
+      const renderGraph = (data, center, filterBy) => {
+        // get filtered data
+        const centerText = [{ text: center }];
+        const schools = filterData(data, filterBy);
+        console.log(schools);
+        const graph = calculateGraph(schools, centerText);
+        console.log(graph);
+
+        const link = svg
+          .selectAll(".link")
+          .data(graph.links, (d) => d.id)
+          .join("line")
+          .classed("link", true)
+          .attr("stroke", "#ccc")
+          .attr("opacity", 0.5);
+
+        const node = svg
+          .selectAll("g")
+          .data(graph.nodes, (d) => d)
+          .join("g");
+
+        node
+          .append("circle")
+          .attr("r", 20)
+          .attr("fill", (d) => d.color)
+          .attr("stroke", "black")
+          .attr("stroke-width", 0.5)
+          .attr(
+            "transform",
+            (d) => `scale(${Math.log(d.size) !== 0 ? Math.log(d.size) : 1})`
+          );
+
+        node
+          .on("mouseover", function () {
+            mouseoverNode(this);
+          })
+          .on("mouseout", function () {
+            mouseoutNode(this);
+          })
+          .on("click", function () {
+            clickNode(this, data);
           });
         node
           .append("text")
@@ -192,7 +343,7 @@
         .attr("height", svgHeight);
 
       fetchData().then((data) => {
-        renderGraph(data);
+        renderGraph(data, "МУИС", "Сургууль");
       });
     </script>
   </body>
