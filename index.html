@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: visible;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as d3 from "https://cdn.jsdelivr.net/npm/d3@7/+esm";
+      import {
+        forceSimulation,
+        forceLink,
+      } from "https://cdn.skypack.dev/d3-force@3";
+      const svgWidth = window.innerWidth;
+      const svgHeight = window.innerHeight;
+      const colors = [
+        "#FBB6CE",
+        "#D6BCFA",
+        "#9DECF9",
+        "#90CDF4",
+        "#81E6D9",
+        "#9AE6B4",
+        "#FAF089",
+        "#FBD38D",
+        "#FEB2B2",
+      ];
+
+      const fetchData = () => {
+        return d3.json("data.json");
+      };
+
+      const filterData = (data = {}, filter) => {
+        let newData = {};
+        data.forEach((item) => {
+          newData.hasOwnProperty(item[filter])
+            ? newData[item[filter]]++
+            : (newData[item[filter]] = 0);
+        });
+        return Object.keys(newData).map((d) => ({
+          name: d,
+          size: newData[d],
+          color: getRandomColor(),
+        }));
+      };
+
+      const calculateGraph = (data, src) => {
+        const links = [];
+        data.forEach((d, i) =>
+          links.push({
+            source: src.text,
+            target: d,
+            id: `${d}-${i}`,
+          })
+        );
+        return { nodes: data, links };
+      };
+
+      const getRandomColor = () => {
+        return colors[Math.floor(Math.random() * colors.length)];
+      };
+
+      const drag = (simulation) => {
+        const dragstarted = (d) => {
+          if (!d3.event.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x;
+          d.fy = d.y;
+        };
+
+        const dragged = (d) => {
+          d.fx = d3.event.x;
+          d.fy = d3.event.y;
+        };
+
+        const dragended = (d) => {
+          if (!d3.event.active) simulation.alphaTarget(0);
+          d.fx = null;
+          d.fy = null;
+        };
+        return d3
+          .drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended);
+      };
+
+      const mouseoverNode = (ref) => {
+        let el = d3.select(ref);
+        el.attr("fill-opacity", 0.5);
+      };
+
+      const mouseoutNode = (ref) => {
+        let el = d3.select(ref);
+        el.attr("fill-opacity", 1);
+      };
+
+      const renderGraph = (data) => {
+        // get filtered data
+        const centerText = [{ text: "МУИС" }];
+        const schools = filterData(data, "Сургууль");
+        console.log(schools);
+        const graph = calculateGraph(schools, centerText);
+
+        const link = svg
+          .selectAll(".link")
+          .data(graph.links, (d) => d.id)
+          .join("line")
+          .classed("link", true)
+          .attr("stroke", "#ccc")
+          .attr("opacity", 0.5);
+
+        const node = svg
+          .selectAll("g")
+          .data(graph.nodes, (d) => d)
+          .join("g");
+
+        node
+          .append("circle")
+          .attr("r", 20)
+          .attr("fill", (d) => d.color)
+          .attr("stroke", "black")
+          .attr("stroke-width", 0.5)
+          .attr("transform", (d) => `scale(${Math.log(d.size)})`);
+
+        node
+          .on("mouseover", function () {
+            mouseoverNode(this);
+          })
+          .on("mouseout", function () {
+            mouseoutNode(this);
+          });
+        node
+          .append("text")
+          .attr("text-anchor", "middle")
+          .attr("dy", ".35em")
+          .style("font-size", "1em")
+          .style("font-style", "italic")
+          .text((d) => d.name);
+
+        // center text MUIS
+        const label = svg
+          .append("text")
+          .data(centerText)
+          .attr("font-size", "3em")
+          .attr("text-anchor", "middle")
+          .attr("dy", ".35em")
+          .text((d) => d.text);
+
+        const _nodes = [...centerText, ...graph.nodes];
+        const simulation = d3
+          .forceSimulation(_nodes)
+          .force(
+            "link",
+            d3
+              .forceLink()
+              .id((d) => d.name)
+              .links(graph.links)
+              .distance(200)
+          )
+          .force("charge", d3.forceManyBody().strength(-1000))
+          .force(
+            "collide",
+            d3.forceCollide((d) => 20 * Math.log(d.size) || 100)
+          )
+          .force("center", d3.forceCenter(svgWidth / 2, svgHeight / 2))
+          // .alphaTarget(0.1)
+          .on("tick", () => {
+            console.log("tick");
+            link
+              .attr("x1", (d) => d.source.x)
+              .attr("y1", (d) => d.source.y)
+              .attr("x2", (d) => d.target.x)
+              .attr("y2", (d) => d.target.y);
+
+            node.attr("transform", (d) => `translate(${d.x}, ${d.y})`);
+            label.attr("transform", (d) => `translate(${d.x}, ${d.y})`);
+            //node.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+          });
+      };
+
+      const svg = d3
+        .select("body")
+        .append("svg")
+        .attr("width", svgWidth)
+        .attr("height", svgHeight);
+
+      fetchData().then((data) => {
+        renderGraph(data);
+      });
+    </script>
+  </body>
+</html>
